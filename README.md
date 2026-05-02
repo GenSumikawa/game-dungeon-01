@@ -18,7 +18,7 @@
 ## 実行方法
 
 1. `index.html` をブラウザで開くだけ  （ローカルサーバ不要）
-2. 「https://gensumikawa.github.io/game-dungeon-01/」にアクセス
+2. [Github Pagesにアクセス](https://gensumikawa.github.io/game-dungeon-01/)
 
 ---
 
