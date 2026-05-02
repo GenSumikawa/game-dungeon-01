@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ダンジョン</title>
+<style>
+  body { font-family: "MS Gothic","MeiryoKe_Console","Noto Sans Mono CJK JP",monospace; }
+  #game {
+    line-height: 1.1;
+    white-space: pre; /* 全角スペースを崩さない */
+    user-select: none;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+
+<h2>ランダムダンジョン</h2>
+<p>操作：WASDキー / スペースキーで開始</p>
+<pre id="game"></pre>
+
+<script>
+// ===== 調整ポイント =====
+const WIDTH = 41;
+const HEIGHT = 21;
+const WALL_RATE = 0.20;    // 壁を減らしたいなら 0.22 など
+const ENEMY_COUNT = 7;    // 敵の数
+// =======================
+
+let map, player, goal;
+let enemies = [];
+let isPlaying = false;
+
+// 到達可能チェック（BFS）
+function isReachable() {
+  let visited = Array.from({ length: HEIGHT }, () => Array(WIDTH).fill(false));
+  let queue = [{x: player.x, y: player.y}];
+  visited[player.y][player.x] = true;
+
+  while (queue.length > 0) {
+    let {x, y} = queue.shift();
+    if (x === goal.x && y === goal.y) return true;
+
+    const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+    for (let [dx, dy] of dirs) {
+      let nx = x + dx;
+      let ny = y + dy;
+
+      if (
+        nx >= 0 && nx < WIDTH &&
+        ny >= 0 && ny < HEIGHT &&
+        !visited[ny][nx] &&
+        map[ny][nx] === "."
+      ) {
+        visited[ny][nx] = true;
+        queue.push({x:nx, y:ny});
+      }
+    }
+  }
+  return false;
+}
+
+// ダンジョン生成（外周固定）
+function generate() {
+  while (true) {
+    map = [];
+    for (let y = 0; y < HEIGHT; y++) {
+      let row = [];
+      for (let x = 0; x < WIDTH; x++) {
+        row.push(Math.random() < WALL_RATE ? "#" : ".");
+      }
+      map.push(row);
+    }
+
+    // 外周を壁にする
+    for (let x = 0; x < WIDTH; x++) {
+      map[0][x] = "#";
+      map[HEIGHT - 1][x] = "#";
+    }
+    for (let y = 0; y < HEIGHT; y++) {
+      map[y][0] = "#";
+      map[y][WIDTH - 1] = "#";
+    }
+
+    player = { x: 1, y: 1 };
+    goal = { x: WIDTH - 2, y: HEIGHT - 2 };
+
+    map[player.y][player.x] = ".";
+    map[goal.y][goal.x] = ".";
+
+    if (isReachable()) break;
+  }
+
+  // 敵配置（床に置く。プレイヤー/ゴールと被らない）
+  enemies = [];
+  const used = new Set();
+  used.add(player.x + "," + player.y);
+  used.add(goal.x + "," + goal.y);
+
+  for (let i = 0; i < ENEMY_COUNT; i++) {
+    for (let tries = 0; tries < 5000; tries++) {
+      let x = Math.floor(Math.random() * (WIDTH - 2)) + 1;
+      let y = Math.floor(Math.random() * (HEIGHT - 2)) + 1;
+
+      const key = x + "," + y;
+      if (map[y][x] === "." && !used.has(key)) {
+        enemies.push({x, y});
+        used.add(key);
+        break;
+      }
+    }
+  }
+}
+
+// 敵がいるか
+function enemyAt(x, y) {
+  return enemies.some(e => e.x === x && e.y === y);
+}
+
+// 描画（壁は全部■、床は全角スペース）
+function draw() {
+  const el = document.getElementById("game");
+
+  if (!isPlaying) {
+    el.textContent = "スペースキーを押して開始";
+    return;
+  }
+
+  let out = "";
+  for (let y = 0; y < HEIGHT; y++) {
+    for (let x = 0; x < WIDTH; x++) {
+      if (x === player.x && y === player.y) out += "○";
+      else if (x === goal.x && y === goal.y) out += "◎";
+      else if (enemyAt(x, y)) out += "・";
+      else out += (map[y][x] === "#") ? "■" : "　";
+    }
+    out += "\n";
+  }
+
+  el.textContent = out;
+}
+
+// 敵を1ターンぶん動かす（プレイヤーが動いた後に呼ぶ）
+function moveEnemiesOnce() {
+  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
+
+  // 今ターンの占有（敵同士の衝突防止）
+  const occupied = new Set(enemies.map(e => e.x + "," + e.y));
+
+  for (let i = 0; i < enemies.length; i++) {
+    const e = enemies[i];
+    const options = [];
+
+    for (const [dx, dy] of dirs) {
+      const nx = e.x + dx;
+      const ny = e.y + dy;
+
+      // 外周は壁
+      if (nx <= 0 || ny <= 0 || nx >= WIDTH - 1 || ny >= HEIGHT - 1) continue;
+      // 壁は不可
+      if (map[ny][nx] === "#") continue;
+      // ゴール上は避ける（好みで外してOK）
+      if (nx === goal.x && ny === goal.y) continue;
+
+      const key = nx + "," + ny;
+      if (occupied.has(key)) continue;
+
+      options.push({x:nx, y:ny});
+    }
+
+    if (options.length > 0) {
+      occupied.delete(e.x + "," + e.y);
+
+      const pick = options[Math.floor(Math.random() * options.length)];
+      e.x = pick.x;
+      e.y = pick.y;
+
+      occupied.add(e.x + "," + e.y);
+
+      // プレイヤーに接触したら負け
+      if (e.x === player.x && e.y === player.y) {
+        alert("敵に捕まった！");
+        isPlaying = false;
+        return;
+      }
+    }
+  }
+}
+
+// プレイヤー移動（1回のキー入力で「プレイヤー→敵」）
+function move(dx, dy) {
+  const nx = player.x + dx;
+  const ny = player.y + dy;
+
+  // 範囲外防止
+  if (nx < 0 || ny < 0 || nx >= WIDTH || ny >= HEIGHT) return;
+  // 壁なら移動不可
+  if (map[ny][nx] === "#") return;
+
+  // 敵がいるマスに入ったら負け
+  if (enemyAt(nx, ny)) {
+    alert("敵に当たった！");
+    isPlaying = false;
+    return;
+  }
+
+  player.x = nx;
+  player.y = ny;
+
+  // クリア判定（敵より先）
+  if (player.x === goal.x && player.y === goal.y) {
+    alert("クリア！");
+    isPlaying = false;
+    draw();
+    return;
+  }
+
+  // 敵のターン
+  moveEnemiesOnce();
+  draw();
+}
+
+// 入力（スペース開始／WASD移動）
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") {
+    if (!isPlaying) {
+      generate();
+      isPlaying = true;
+      draw();
+    }
+    return;
+  }
+
+  if (!isPlaying) return;
+
+  switch (e.key.toLowerCase()) {
+    case "w": move(0, -1); break;
+    case "s": move(0, 1); break;
+    case "a": move(-1, 0); break;
+    case "d": move(1, 0); break;
+  }
+});
+
+// 初期表示
+draw();
+</script>
+
+</body>
+</html>
