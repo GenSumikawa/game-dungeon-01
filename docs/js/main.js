@@ -204,8 +204,12 @@ function stopEnemyTimer() {
 }
 
 // ===== 入力 =====
+function isStartKey(e) {
+  return e.code === "Space" || e.key === " " || e.key === "Spacebar";
+}
+
 document.addEventListener("keydown", e => {
-  if (e.code === "Space") {
+  if (isStartKey(e)) {
     if (!isPlaying) {
       generate();
       isPlaying = true;
