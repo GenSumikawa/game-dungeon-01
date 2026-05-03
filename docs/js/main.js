@@ -1,15 +1,4 @@
 import { PLAYER_HP_MAX, PLAYER_ATK, player, playerState, initPlayer, addMsg } from "./player.js";
-import {
-  ENEMY_COUNT,
-  ENEMY_HP,
-  ENEMY_ATK,
-  ENEMY_TICK_MS,
-  ENEMY_MOVE_CHANCE,
-  ENEMY_ATTACK_COOLDOWN_TICKS,
-  enemyIndexAt,
-  createEnemies,
-  updateEnemies
-} from "./enemy.js";
 
 function startGame() {
 
@@ -18,6 +7,20 @@ const WIDTH = 41;
 const HEIGHT = 21;
 const WALL_RATE = 0.25;
 
+const ENEMY_COUNT = 10;
+const ENEMY_HP = 2;
+
+const ENEMY_ATK = 1;
+
+// 敵の「時間経過」設定
+const ENEMY_TICK_MS = 500;        // 0.5秒
+const ENEMY_MOVE_CHANCE = 0.20;   // 動く20%
+
+// 敵の攻撃（tickごと）：正面にプレイヤーがいれば抽選
+const ENEMY_HIT_CHANCE = 0.60;    // 命中確率
+
+// ★攻撃クールタイム（tick数）
+const ENEMY_ATTACK_COOLDOWN_TICKS = 3; // 3 tick = 約1.5秒
 // =======================
 
 // ★あなた指定で固定
@@ -36,6 +39,9 @@ let enemyTimer = null;
 // ===== util =====
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function inBounds(x, y) { return x >= 0 && y >= 0 && x < WIDTH && y < HEIGHT; }
+function enemyIndexAt(x, y) {
+  return enemies.findIndex(e => e.x === x && e.y === y);
+}
 
 // ===== BFS（到達可能チェック）=====
 function isReachable() {
@@ -83,7 +89,22 @@ function generate() {
   }
 
   // 敵配置（cool=0）
-  enemies = createEnemies(map, player, goal, randInt, DIR_LIST, ENEMY_HP);
+  enemies = [];
+  const used = new Set([`${player.x},${player.y}`, `${goal.x},${goal.y}`]);
+
+  for (let i = 0; i < ENEMY_COUNT; i++) {
+    for (let tries = 0; tries < 5000; tries++) {
+      const x = randInt(1, WIDTH - 2);
+      const y = randInt(1, HEIGHT - 2);
+      const key = `${x},${y}`;
+      if (map[y][x] !== ".") continue;
+      if (used.has(key)) continue;
+
+      enemies.push({ x, y, hp: ENEMY_HP, dir: DIR_LIST[randInt(0,3)], cool: 0 });
+      used.add(key);
+      break;
+    }
+  }
 }
 
 // ===== 描画 =====
@@ -180,12 +201,75 @@ function playerAttack() {
 function enemyTick() {
   if (!isPlaying) return;
 
-  const playerDied = updateEnemies(enemies, player, goal, map, addMsg, randInt, DIR, DIR_LIST, playerState);
-  if (playerDied) {
-    alert("やられた！");
-    isPlaying = false;
-    draw();
-    return;
+  // 1) クール減少
+  for (const e of enemies) if (e.cool > 0) e.cool--;
+
+  // 2) 攻撃者候補（正面にプレイヤー ＆ cool==0）
+  const attackers = [];
+  for (const e of enemies) {
+    if (e.cool > 0) continue;
+    const fx = e.x + DIR[e.dir].dx;
+    const fy = e.y + DIR[e.dir].dy;
+    if (fx === player.x && fy === player.y) attackers.push(e);
+  }
+
+  // 3) ★攻撃を「優先」：候補がいれば先に攻撃（移動より先）
+  if (attackers.length > 0) {
+    const a = attackers[randInt(0, attackers.length - 1)];
+    a.cool = ENEMY_ATTACK_COOLDOWN_TICKS; // 試行した時点でCT
+
+    if (Math.random() < ENEMY_HIT_CHANCE) {
+      playerState.hp -= ENEMY_ATK;
+      addMsg("敵の攻撃！");
+      if (playerState.hp <= 0) {
+        alert("やられた！");
+        isPlaying = false;
+        draw();
+        return;
+      }
+    } else {
+      addMsg("敵の攻撃…外れ");
+    }
+  }
+
+  // 4) 移動（各敵20%）ただし「正面にプレイヤーがいる敵」は動かない（＝攻撃優先の一貫性）
+  const occupied = new Set(enemies.map(e => `${e.x},${e.y}`));
+
+  for (const e of enemies) {
+    // 正面にプレイヤーがいるなら移動しない（攻撃姿勢）
+    const fx = e.x + DIR[e.dir].dx;
+    const fy = e.y + DIR[e.dir].dy;
+    if (fx === player.x && fy === player.y) continue;
+
+    if (Math.random() >= ENEMY_MOVE_CHANCE) continue;
+
+    const options = [];
+    for (const k of DIR_LIST) {
+      const nx = e.x + DIR[k].dx;
+      const ny = e.y + DIR[k].dy;
+
+      if (!inBounds(nx, ny)) continue;
+      if (nx <= 0 || ny <= 0 || nx >= WIDTH - 1 || ny >= HEIGHT - 1) continue;
+      if (map[ny][nx] === "#") continue;
+      if (nx === goal.x && ny === goal.y) continue;
+
+      // プレイヤーと重複禁止
+      if (nx === player.x && ny === player.y) continue;
+
+      const key = `${nx},${ny}`;
+      if (occupied.has(key)) continue;
+
+      options.push(k);
+    }
+
+    if (options.length === 0) continue;
+
+    const chosen = options[randInt(0, options.length - 1)];
+    occupied.delete(`${e.x},${e.y}`);
+    e.x += DIR[chosen].dx;
+    e.y += DIR[chosen].dy;
+    e.dir = chosen;
+    occupied.add(`${e.x},${e.y}`);
   }
 
   draw();
