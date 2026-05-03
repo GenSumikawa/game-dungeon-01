@@ -1,3 +1,5 @@
+import { PLAYER_HP_MAX, PLAYER_ATK, player, playerState, initPlayer, addMsg } from "./player.js";
+
 function startGame() {
 
 // ===== 調整ポイント =====
@@ -6,10 +8,8 @@ const HEIGHT = 21;
 const WALL_RATE = 0.25;
 
 const ENEMY_COUNT = 10;
-const PLAYER_HP_MAX = 6;
 const ENEMY_HP = 2;
 
-const PLAYER_ATK = 1;
 const ENEMY_ATK = 1;
 
 // 敵の「時間経過」設定
@@ -32,19 +32,13 @@ const DIR = {
 };
 const DIR_LIST = ["U","R","D","L"];
 
-let map, player, goal, enemies;
+let map, goal, enemies;
 let isPlaying = false;
-
-let playerHp = PLAYER_HP_MAX;
-let playerDir = "D";
-let msg = "";
 let enemyTimer = null;
 
 // ===== util =====
 function randInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function inBounds(x, y) { return x >= 0 && y >= 0 && x < WIDTH && y < HEIGHT; }
-function addMsg(s) { if (!s) return; msg = msg ? (msg + " / " + s) : s; }
-
 function enemyIndexAt(x, y) {
   return enemies.findIndex(e => e.x === x && e.y === y);
 }
@@ -86,17 +80,13 @@ function generate() {
     for (let x = 0; x < WIDTH; x++) { map[0][x] = "#"; map[HEIGHT - 1][x] = "#"; }
     for (let y = 0; y < HEIGHT; y++) { map[y][0] = "#"; map[y][WIDTH - 1] = "#"; }
 
-    player = { x: 1, y: 1 };
+    initPlayer();
     goal = { x: WIDTH - 2, y: HEIGHT - 2 };
     map[player.y][player.x] = ".";
     map[goal.y][goal.x] = ".";
 
     if (isReachable()) break;
   }
-
-  playerHp = PLAYER_HP_MAX;
-  playerDir = "D";
-  msg = "";
 
   // 敵配置（cool=0）
   enemies = [];
@@ -131,12 +121,12 @@ function draw() {
     return;
   }
 
-  const fx = player.x + DIR[playerDir].dx;
-  const fy = player.y + DIR[playerDir].dy;
+  const fx = player.x + DIR[playerState.dir].dx;
+  const fy = player.y + DIR[playerState.dir].dy;
 
   let out = "";
-  out += `HP: ${playerHp}/${PLAYER_HP_MAX}  敵: ${enemies.length}  向き: ${DIR[playerDir].name}(${DIR[playerDir].p})\n`;
-  out += (msg ? `メッセージ: ${msg}\n\n` : "\n\n");
+  out += `HP: ${playerState.hp}/${PLAYER_HP_MAX}  敵: ${enemies.length}  向き: ${DIR[playerState.dir].name}(${DIR[playerState.dir].p})\n`;
+  out += (playerState.msg ? `メッセージ: ${playerState.msg}\n\n` : "\n\n");
 
   for (let y = 0; y < HEIGHT; y++) {
     for (let x = 0; x < WIDTH; x++) {
@@ -158,8 +148,8 @@ function draw() {
 
 // ===== プレイヤー移動（移動できなくても向きは変える）=====
 function movePlayer(dirKey) {
-  msg = "";
-  playerDir = dirKey;
+  playerState.msg = "";
+  playerState.dir = dirKey;
 
   const nx = player.x + DIR[dirKey].dx;
   const ny = player.y + DIR[dirKey].dy;
@@ -186,10 +176,10 @@ function movePlayer(dirKey) {
 
 // ===== プレイヤー攻撃（前方1マス）=====
 function playerAttack() {
-  msg = "";
+  playerState.msg = "";
 
-  const tx = player.x + DIR[playerDir].dx;
-  const ty = player.y + DIR[playerDir].dy;
+  const tx = player.x + DIR[playerState.dir].dx;
+  const ty = player.y + DIR[playerState.dir].dy;
 
   if (!inBounds(tx, ty)) { addMsg("攻撃：外れ"); draw(); return; }
 
@@ -229,10 +219,9 @@ function enemyTick() {
     a.cool = ENEMY_ATTACK_COOLDOWN_TICKS; // 試行した時点でCT
 
     if (Math.random() < ENEMY_HIT_CHANCE) {
-      playerHp -= ENEMY_ATK;
+      playerState.hp -= ENEMY_ATK;
       addMsg("敵の攻撃！");
-      if (playerHp <= 0) {
-        stopEnemyTimer();
+      if (playerState.hp <= 0) {
         alert("やられた！");
         isPlaying = false;
         draw();
