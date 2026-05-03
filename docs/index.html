@@ -1,1 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>ランダムダンジョン（敵：時間移動＋攻撃優先＋CT）</title>
+<style>
+  body { font-family: "MS Gothic","MeiryoKe_Console","Noto Sans Mono CJK JP",monospace; }
+  #game { line-height: 1.1; white-space: pre; user-select: none; font-size: 14px; }
+</style>
+</head>
+<body>
 
+<h2>ランダムダンジョン</h2>
+<p>操作：WASD移動（向き変更） / 1キー攻撃（前方1マス） / スペースで開始</p>
+<pre id="game"></pre>
+
+<script type="module">
+  import { startGame } from "./js/main.js";
+  startGame();
+</script>
+
+</body>
+</html>
